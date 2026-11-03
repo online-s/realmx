@@ -29,6 +29,27 @@ A simple, high performance relay server written in rust.
 
 Realm can be run in a container with OCI (like Docker, Podman, Kubernetes, etc), see guides [here](readme.container.md).
 
+## One-command Install
+
+Install the custom relay binary and enable its systemd service on Linux:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/online-s/realmx/main/install.sh | sudo sh
+```
+
+Check the service or follow its logs:
+
+```shell
+systemctl status realm --no-pager
+journalctl -u realm -f
+```
+
+To uninstall:
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/online-s/realmx/main/install.sh | sudo sh -s -- uninstall
+```
+
 ## Build
 
 Install rust toolchain with [rustup](https://rustup.rs/):

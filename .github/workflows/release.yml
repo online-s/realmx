@@ -4,6 +4,9 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: write
+
 env:
   ZIGBUILD_GLIBC: "2.28"
 jobs:
