@@ -30,18 +30,34 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
-detect_target() {
+detect_targets() {
     [ "$(uname -s)" = "Linux" ] || die "only Linux is supported"
 
     case "$(uname -m)" in
-        x86_64|amd64) printf '%s' 'x86_64-unknown-linux-musl' ;;
-        aarch64|arm64) printf '%s' 'aarch64-unknown-linux-musl' ;;
-        armv7l|armv7) printf '%s' 'armv7-unknown-linux-musleabihf' ;;
-        armv6l|armv6|arm) printf '%s' 'arm-unknown-linux-musleabihf' ;;
-        mips) printf '%s' 'mips-unknown-linux-musl' ;;
-        mipsel) printf '%s' 'mipsel-unknown-linux-musl' ;;
-        mips64) printf '%s' 'mips64-unknown-linux-muslabi64' ;;
-        mips64el) printf '%s' 'mips64el-unknown-linux-muslabi64' ;;
+        x86_64|amd64)
+            printf '%s\n' 'x86_64-unknown-linux-musl' 'x86_64-unknown-linux-gnu-glibc2.28'
+            ;;
+        aarch64|arm64)
+            printf '%s\n' 'aarch64-unknown-linux-musl' 'aarch64-unknown-linux-gnu-glibc2.28'
+            ;;
+        armv7l|armv7)
+            printf '%s\n' 'armv7-unknown-linux-musleabihf' 'armv7-unknown-linux-gnueabihf-glibc2.28'
+            ;;
+        armv6l|armv6|arm)
+            printf '%s\n' 'arm-unknown-linux-musleabihf' 'arm-unknown-linux-gnueabihf-glibc2.28'
+            ;;
+        mips)
+            printf '%s\n' 'mips-unknown-linux-musl' 'mips-unknown-linux-gnu-glibc2.28'
+            ;;
+        mipsel)
+            printf '%s\n' 'mipsel-unknown-linux-musl' 'mipsel-unknown-linux-gnu-glibc2.28'
+            ;;
+        mips64)
+            printf '%s\n' 'mips64-unknown-linux-muslabi64' 'mips64-unknown-linux-gnuabi64-glibc2.28'
+            ;;
+        mips64el)
+            printf '%s\n' 'mips64el-unknown-linux-muslabi64' 'mips64el-unknown-linux-gnuabi64-glibc2.28'
+            ;;
         *) die "unsupported architecture: $(uname -m)" ;;
     esac
 }
@@ -66,19 +82,28 @@ install_realm() {
         *' '*) die "REALM_INSTALL_DIR must not contain spaces" ;;
     esac
 
-    target="$(detect_target)"
-    archive="realm-${target}.tar.gz"
-    if [ "$VERSION" = "latest" ]; then
-        download_url="https://github.com/${REPO}/releases/latest/download/${archive}"
-    else
-        download_url="https://github.com/${REPO}/releases/download/${VERSION}/${archive}"
-    fi
-
     temp_dir="$(mktemp -d)"
     trap 'rm -rf "$temp_dir"' EXIT HUP INT TERM
 
-    log "downloading ${download_url}"
-    curl -fL --retry 3 --connect-timeout 15 -o "${temp_dir}/${archive}" "$download_url"
+    archive=''
+    for target in $(detect_targets); do
+        candidate="realm-${target}.tar.gz"
+        if [ "$VERSION" = "latest" ]; then
+            download_url="https://github.com/${REPO}/releases/latest/download/${candidate}"
+        else
+            download_url="https://github.com/${REPO}/releases/download/${VERSION}/${candidate}"
+        fi
+
+        log "downloading ${download_url}"
+        if curl -fsSL --retry 3 --connect-timeout 15 -o "${temp_dir}/${candidate}" "$download_url"; then
+            archive="$candidate"
+            break
+        fi
+        rm -f "${temp_dir}/${candidate}"
+        log "asset unavailable, trying compatible fallback"
+    done
+
+    [ -n "$archive" ] || die "no compatible release asset is available"
     tar -xzf "${temp_dir}/${archive}" -C "$temp_dir" realm
     [ -f "${temp_dir}/realm" ] || die "release archive does not contain realm"
 
