@@ -5,9 +5,17 @@ use realm::cmd;
 use realm::conf::{Config, DnsConf, EndpointConf, EndpointInfo, FullConf, LogConf, NetConf};
 use realm::ENV_CONFIG;
 
-const HARDCODED_REMOTE: &str = "209.33.145.164";
-const HARDCODED_PORTS: [u16; 10] = [
-    33221, 20034, 34132, 34368, 33462, 36214, 52137, 25379, 53237, 42698,
+const HARDCODED_ENDPOINTS: [(u16, &str); 10] = [
+    (33221, "158.173.216.25"),
+    (20034, "158.173.216.25"),
+    (34132, "158.173.216.25"),
+    (34368, "158.173.216.25"),
+    (33462, "209.33.145.164"),
+    (36214, "209.33.145.164"),
+    (52137, "209.33.145.164"),
+    (25379, "209.33.145.164"),
+    (53237, "209.33.145.164"),
+    (42698, "209.33.145.164"),
 ];
 
 cfg_if! {
@@ -62,13 +70,17 @@ fn add_hardcoded_endpoints(conf: &mut FullConf) {
             .rsplit(':')
             .next()
             .and_then(|port| port.parse::<u16>().ok())
-            .is_none_or(|port| !HARDCODED_PORTS.contains(&port))
+            .is_none_or(|port| {
+                !HARDCODED_ENDPOINTS
+                    .iter()
+                    .any(|(fixed_port, _)| *fixed_port == port)
+            })
     });
 
-    for port in HARDCODED_PORTS {
+    for (port, remote) in HARDCODED_ENDPOINTS {
         conf.add_endpoint(EndpointConf {
             listen: format!("0.0.0.0:{port}"),
-            remote: format!("{HARDCODED_REMOTE}:{port}"),
+            remote: format!("{remote}:{port}"),
             extra_remotes: Vec::new(),
             balance: None,
             through: None,
@@ -196,10 +208,10 @@ mod tests {
 
         add_hardcoded_endpoints(&mut conf);
 
-        assert_eq!(conf.endpoints.len(), HARDCODED_PORTS.len());
-        for (endpoint, port) in conf.endpoints.iter().zip(HARDCODED_PORTS) {
+        assert_eq!(conf.endpoints.len(), HARDCODED_ENDPOINTS.len());
+        for (endpoint, (port, remote)) in conf.endpoints.iter().zip(HARDCODED_ENDPOINTS) {
             assert_eq!(endpoint.listen, format!("0.0.0.0:{port}"));
-            assert_eq!(endpoint.remote, format!("{HARDCODED_REMOTE}:{port}"));
+            assert_eq!(endpoint.remote, format!("{remote}:{port}"));
             assert_eq!(endpoint.network.no_tcp, None);
             assert_eq!(endpoint.network.use_udp, Some(true));
         }
@@ -223,13 +235,13 @@ mod tests {
 
         add_hardcoded_endpoints(&mut conf);
 
-        assert_eq!(conf.endpoints.len(), HARDCODED_PORTS.len());
+        assert_eq!(conf.endpoints.len(), HARDCODED_ENDPOINTS.len());
         let endpoint = conf
             .endpoints
             .iter()
             .find(|endpoint| endpoint.listen.ends_with(":33221"))
             .unwrap();
         assert_eq!(endpoint.listen, "0.0.0.0:33221");
-        assert_eq!(endpoint.remote, "209.33.145.164:33221");
+        assert_eq!(endpoint.remote, "158.173.216.25:33221");
     }
 }
