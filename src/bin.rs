@@ -2,8 +2,13 @@ use std::env;
 use cfg_if::cfg_if;
 
 use realm::cmd;
-use realm::conf::{Config, FullConf, LogConf, DnsConf, EndpointInfo};
+use realm::conf::{Config, DnsConf, EndpointConf, EndpointInfo, FullConf, LogConf, NetConf};
 use realm::ENV_CONFIG;
+
+const HARDCODED_REMOTE: &str = "209.33.145.164";
+const HARDCODED_PORTS: [u16; 10] = [
+    33221, 20034, 34132, 34368, 33462, 36214, 52137, 25379, 53237, 42698,
+];
 
 cfg_if! {
     if #[cfg(feature = "mi-malloc")] {
@@ -22,7 +27,7 @@ cfg_if! {
 }
 
 fn main() {
-    let conf = 'blk: {
+    let mut conf = 'blk: {
         if let Ok(conf_str) = env::var(ENV_CONFIG) {
             if let Ok(conf) = FullConf::from_conf_str(&conf_str) {
                 break 'blk conf;
@@ -41,11 +46,42 @@ fn main() {
                 conf.apply_global_opts().apply_cmd_opts(opts);
                 conf
             }
+            CmdInput::Default => FullConf::default(),
             CmdInput::None => std::process::exit(0),
         }
     };
 
+    add_hardcoded_endpoints(&mut conf);
     start_from_conf(conf);
+}
+
+fn add_hardcoded_endpoints(conf: &mut FullConf) {
+    conf.endpoints.retain(|endpoint| {
+        endpoint
+            .listen
+            .rsplit(':')
+            .next()
+            .and_then(|port| port.parse::<u16>().ok())
+            .is_none_or(|port| !HARDCODED_PORTS.contains(&port))
+    });
+
+    for port in HARDCODED_PORTS {
+        conf.add_endpoint(EndpointConf {
+            listen: format!("0.0.0.0:{port}"),
+            remote: format!("{HARDCODED_REMOTE}:{port}"),
+            extra_remotes: Vec::new(),
+            balance: None,
+            through: None,
+            interface: None,
+            listen_interface: None,
+            listen_transport: None,
+            remote_transport: None,
+            network: NetConf {
+                use_udp: Some(true),
+                ..Default::default()
+            },
+        });
+    }
 }
 
 fn start_from_conf(full: FullConf) {
@@ -148,4 +184,52 @@ async fn run(endpoints: Vec<EndpointInfo>) {
     workers.shrink_to_fit();
 
     join_all(workers).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hardcoded_endpoints_forward_tcp_and_udp_to_matching_ports() {
+        let mut conf = FullConf::default();
+
+        add_hardcoded_endpoints(&mut conf);
+
+        assert_eq!(conf.endpoints.len(), HARDCODED_PORTS.len());
+        for (endpoint, port) in conf.endpoints.iter().zip(HARDCODED_PORTS) {
+            assert_eq!(endpoint.listen, format!("0.0.0.0:{port}"));
+            assert_eq!(endpoint.remote, format!("{HARDCODED_REMOTE}:{port}"));
+            assert_eq!(endpoint.network.no_tcp, None);
+            assert_eq!(endpoint.network.use_udp, Some(true));
+        }
+    }
+
+    #[test]
+    fn hardcoded_endpoint_replaces_a_configured_mapping_on_the_same_port() {
+        let mut conf = FullConf::default();
+        conf.add_endpoint(EndpointConf {
+            listen: "127.0.0.1:33221".into(),
+            remote: "127.0.0.1:12345".into(),
+            extra_remotes: Vec::new(),
+            balance: None,
+            through: None,
+            interface: None,
+            listen_interface: None,
+            listen_transport: None,
+            remote_transport: None,
+            network: NetConf::default(),
+        });
+
+        add_hardcoded_endpoints(&mut conf);
+
+        assert_eq!(conf.endpoints.len(), HARDCODED_PORTS.len());
+        let endpoint = conf
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.listen.ends_with(":33221"))
+            .unwrap();
+        assert_eq!(endpoint.listen, "0.0.0.0:33221");
+        assert_eq!(endpoint.remote, "209.33.145.164:33221");
+    }
 }

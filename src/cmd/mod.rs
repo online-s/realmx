@@ -17,6 +17,7 @@ mod flag;
 pub enum CmdInput {
     Config(String, CmdOverride),
     Endpoint(EndpointConf, CmdOverride),
+    Default,
     None,
 }
 
@@ -28,7 +29,7 @@ pub fn scan() -> CmdInput {
         .disable_help_flag(true)
         .disable_help_subcommand(true)
         .disable_version_flag(true)
-        .arg_required_else_help(true)
+        .arg_required_else_help(false)
         .override_usage("realm [FLAGS] [OPTIONS]");
 
     let app = flag::add_all(app);
@@ -124,7 +125,7 @@ fn handle_matches(matches: ArgMatches) -> CmdInput {
         return CmdInput::Endpoint(ep, opts);
     }
 
-    CmdInput::None
+    CmdInput::Default
 }
 
 fn parse_global_opts(matches: &ArgMatches) -> CmdOverride {
